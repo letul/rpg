@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>랜덤 던전 RPG - 2D 도트 액션 로그라이크</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="game-container">
+    <!-- 2D 도트 캔버스 -->
+    <canvas id="game-canvas"></canvas>
+
+    <!-- 플로팅 토스트 메시지 -->
+    <div id="toast-container"></div>
+
+    <!-- G키 상호작용 안내 -->
+    <div id="interact-prompt">[ G ] 상호작용</div>
+
+    <!-- HUD 상단 -->
+    <div id="hud-top" style="display:none;">
+      <!-- 플레이어 상태 카드 (아르덴 다크 판타지 프레임) -->
+      <div class="player-status-card">
+        <div class="hud-profile-row">
+          <!-- 아르덴 초상화 프레임 -->
+          <div class="hud-portrait-frame">
+            <img src="assets/ui/hud_portrait.png" class="hud-portrait-img" alt="아르덴">
+          </div>
+          <div class="hud-bars-column">
+            <div class="player-meta">
+              <div class="player-name-class" id="hud-name-class">아르덴 (전사)</div>
+              <div class="level-badge" id="hud-level-text">Lv.1</div>
+            </div>
+
+            <!-- HP 바 -->
+            <div class="bar-wrap">
+              <div class="bar-label"><span>체력 (HP)</span><span id="hud-hp-text">100 / 100</span></div>
+              <div class="bar-container"><div class="bar-fill hp" id="hud-hp-bar"></div></div>
+            </div>
+
+            <!-- MP 바 -->
+            <div class="bar-wrap">
+              <div class="bar-label"><span>마나 (MP)</span><span id="hud-mp-text">100 / 100</span></div>
+              <div class="bar-container"><div class="bar-fill mp" id="hud-mp-bar"></div></div>
+            </div>
+
+            <!-- EXP 바 -->
+            <div class="bar-wrap">
+              <div class="bar-label"><span>경험치 (EXP)</span></div>
+              <div class="bar-container" style="height:5px;"><div class="bar-fill exp" id="hud-exp-bar" style="width:0%;"></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 아르덴 핵심 스탯 정보 스트립 -->
+        <div class="hud-stats-strip">
+          <div class="stat-pill" title="공격력">⚔️ <span id="hud-stat-atk">20</span></div>
+          <div class="stat-pill" title="방어력">🛡️ <span id="hud-stat-def">8</span></div>
+          <div class="stat-pill" title="치명타">⚡ <span id="hud-stat-crit">5%</span></div>
+          <div class="stat-pill" title="이동속도">👟 <span id="hud-stat-spd">4.8</span></div>
+        </div>
+
+        <!-- 활성 상태 이상 뱃지 -->
+        <div class="status-effects-row" id="status-effects-row"></div>
+      </div>
+
+      <!-- 보스 체력 바 (보스 조우 시 활성화) -->
+      <div id="boss-hud">
+        <div class="boss-title-row">
+          <span id="boss-name-text">지역 군주</span>
+          <span id="boss-hp-text">1500 / 1500</span>
+        </div>
+        <div class="bar-container" style="height:14px;">
+          <div class="bar-fill" id="boss-hp-bar" style="background: linear-gradient(90deg, #8e44ad, #e74c3c); width:100%;"></div>
+        </div>
+      </div>
+
+      <!-- 상단 우측: 재화 및 미니맵 -->
+      <div class="top-right-group">
+        <div class="resource-card">
+          <div class="res-item"><span style="color:#ffd700;">💰</span> <span id="hud-gold-text">0</span></div>
+          <div class="res-item"><span style="color:#00ffff;">💎</span> <span id="hud-souls-text">0</span></div>
+        </div>
+
+        <div class="minimap-container">
+          <canvas id="minimap-canvas" width="180" height="152"></canvas>
+          <div class="dungeon-info">
+            <span id="minimap-area-name">고대 숲 ★</span>
+            <span id="minimap-room-step">1 / 8</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HUD 하단 스킬 & 액션 바 (Q, E, R, Space 대쉬, F 궁극기) -->
+    <div id="hud-bottom" style="display:none;">
+      <div class="action-bar-wrap">
+        <div class="skills-group">
+          <!-- 기본 공격 -->
+          <div class="slot-btn" title="기본 공격 (마우스 좌클릭)">
+            <span class="slot-key">L-Click</span>
+            <img src="assets/ui/skill_atk.png" class="slot-img-icon" id="skill-icon-atk" alt="공격">
+          </div>
+
+          <!-- 스킬 1: Q -->
+          <div class="slot-btn" id="btn-skill-q" onclick="Game.player && Game.player.castSkill('q')">
+            <span class="slot-key">Q</span>
+            <img src="assets/ui/skill_q.png" class="slot-img-icon" id="skill-icon-q" alt="스킬 Q">
+            <div class="cooldown-overlay" id="cd-q">0.0</div>
+          </div>
+
+          <!-- 스킬 2: E (W키 충돌 방지!) -->
+          <div class="slot-btn" id="btn-skill-e" onclick="Game.player && Game.player.castSkill('e')">
+            <span class="slot-key">E</span>
+            <img src="assets/ui/skill_e.png" class="slot-img-icon" id="skill-icon-e" alt="스킬 E">
+            <div class="cooldown-overlay" id="cd-e">0.0</div>
+          </div>
+
+          <!-- 스킬 3: R -->
+          <div class="slot-btn" id="btn-skill-r" onclick="Game.player && Game.player.castSkill('r')">
+            <span class="slot-key">R</span>
+            <img src="assets/ui/skill_r.png" class="slot-img-icon" id="skill-icon-r" alt="스킬 R">
+            <div class="cooldown-overlay" id="cd-r">0.0</div>
+          </div>
+
+          <!-- 대쉬 (회피 모션): Space -->
+          <div class="slot-btn dash" id="btn-skill-dash" onclick="Game.player && Game.player.performDash()" title="대쉬 / 회피 (Space)">
+            <span class="slot-key">Space</span>
+            <img src="assets/ui/skill_dash.png" class="slot-img-icon" id="skill-icon-dash" alt="대쉬">
+            <div class="cooldown-overlay" id="cd-dash">0.0</div>
+          </div>
+
+          <!-- 궁극기: F -->
+          <div class="slot-btn ultimate" id="btn-skill-ult" onclick="Game.player && Game.player.castSkill('ult')" title="궁극기 (F)">
+            <span class="slot-key">F</span>
+            <img src="assets/ui/skill_ult.png" class="slot-img-icon" id="skill-icon-ult" alt="궁극기 F">
+            <div class="cooldown-overlay" id="cd-ult">0.0</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- 소비 아이템 핫키 슬롯 (1, 2, 3, 4) -->
+        <div class="potions-group">
+          <div class="slot-btn" onclick="Game.player && Game.player.useConsumable(0)">
+            <span class="slot-key">1</span>
+            <img src="assets/ui/potion_red.png" class="slot-img-icon" id="pot-icon-1" alt="HP포션">
+            <span class="slot-count" id="pot-count-1">3</span>
+          </div>
+          <div class="slot-btn" onclick="Game.player && Game.player.useConsumable(1)">
+            <span class="slot-key">2</span>
+            <img src="assets/ui/potion_blue.png" class="slot-img-icon" id="pot-icon-2" alt="MP포션">
+            <span class="slot-count" id="pot-count-2">2</span>
+          </div>
+          <div class="slot-btn" onclick="Game.player && Game.player.useConsumable(2)">
+            <span class="slot-key">3</span>
+            <img src="assets/ui/potion_bomb.png" class="slot-img-icon" id="pot-icon-3" alt="폭탄">
+            <span class="slot-count" id="pot-count-3"></span>
+          </div>
+          <div class="slot-btn" onclick="Game.player && Game.player.useConsumable(3)">
+            <span class="slot-key">4</span>
+            <span class="slot-icon" id="pot-icon-4"></span>
+            <span class="slot-count" id="pot-count-4"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 메뉴 단축 원형 버튼 그룹 -->
+      <div class="hud-btn-group">
+        <div class="hud-circle-btn" onclick="UI.toggleModal('skills-modal')" title="전투 스킬 세팅 및 정보 (K)">⚔️</div>
+        <div class="hud-circle-btn" onclick="UI.toggleModal('inventory-modal')" title="인벤토리 / 캐릭터 (I, C)">🎒</div>
+        <div class="hud-circle-btn" onclick="UI.toggleModal('codex-modal')" title="도감 (B)">📖</div>
+        <div class="hud-circle-btn" onclick="UI.toggleModal('upgrade-modal')" title="영구 성장 제단">💎</div>
+        <div class="hud-circle-btn" onclick="UI.toggleModal('achievements-modal')" title="업적">🏆</div>
+        <div class="hud-circle-btn" onclick="UI.toggleModal('settings-modal')" title="설정 (ESC)">⚙️</div>
+      </div>
+    </div>
+
+    <!-- ===== 전투 스킬 정보 및 키 세팅 모달 (K) ===== -->
+    <div class="modal-overlay" id="skills-modal">
+      <div class="modal-content" style="width:880px; max-width:96vw;">
+        <div class="modal-header">
+          <div class="modal-title">⚔️ 전투 스킬 세팅 및 무기 연계 기술</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('skills-modal')">×</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; background:rgba(0,0,0,0.45); padding:10px 16px; border-radius:8px; border:1px solid rgba(255,255,255,0.08); flex-wrap:wrap; gap:8px;">
+          <div id="skills-modal-header-desc" style="font-size:13px; color:#ddd;">
+            현재 클래스: <span id="skills-class-name" style="color:var(--gold-primary); font-weight:bold;">전사</span> | 장착 무기: <span id="skills-weapon-name" style="color:#00ffff; font-weight:bold;">기사의 롱소드</span>
+          </div>
+          <div style="font-size:12px; color:var(--text-muted);">
+            💡 무기 교체 시 무기 고유 스킬 세트가 즉시 적용됩니다.
+          </div>
+        </div>
+        <!-- 스킬 카드 리스트 그리드 -->
+        <div id="skills-list-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap:12px; max-height:480px; overflow-y:auto; padding:4px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== 인벤토리 & 캐릭터 모달 (악세사리 슬롯 명확 배치 & 가방 스크롤) ===== -->
+    <div class="modal-overlay" id="inventory-modal">
+      <div class="modal-content" style="width:1050px;">
+        <div class="modal-header">
+          <div class="modal-title">🎒 캐릭터 장비 및 소지품</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('inventory-modal')">×</button>
+        </div>
+        <div class="inventory-layout">
+          <!-- 좌측: 세부 능력치 -->
+          <div class="char-stats-panel">
+            <h3 style="color:var(--gold-primary); margin-bottom:10px;">📊 상세 스탯</h3>
+            <div id="char-stats-list"></div>
+          </div>
+
+          <!-- 중앙: 8칸 착용 장비 슬롯 (3x3 대칭 배치: 악세사리 위치 완벽 가시화) -->
+          <div class="equip-panel">
+            <h3 style="color:var(--gold-primary); margin-bottom:10px; text-align:center;">🛡️ 착용 장비</h3>
+            <div class="equip-slots-grid-3x3">
+              <!-- 1열: 투구, 목걸이(악세), 갑옷 -->
+              <div class="item-slot" id="slot-helm" title="투구"></div>
+              <div class="item-slot" id="slot-amulet" title="목걸이 (악세사리)"></div>
+              <div class="item-slot" id="slot-chest" title="갑옷"></div>
+
+              <!-- 2열: 무기, 캐릭터 심볼, 장갑 -->
+              <div class="item-slot" id="slot-weapon" title="무기"></div>
+              <div class="item-slot char-center" id="slot-char"><span style="font-size:26px;">👤</span></div>
+              <div class="item-slot" id="slot-gloves" title="장갑"></div>
+
+              <!-- 3열: 반지1(악세), 신발, 반지2(악세) -->
+              <div class="item-slot" id="slot-ring1" title="반지 1 (악세사리)"></div>
+              <div class="item-slot" id="slot-boots" title="신발"></div>
+              <div class="item-slot" id="slot-ring2" title="반지 2 (악세사리)"></div>
+            </div>
+
+            <h3 style="color:var(--gold-primary); margin:16px 0 8px 0; text-align:center;">✨ 보유 유물 (무제한 &amp; 중복 배수 강화)</h3>
+            <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; min-height:60px;" id="relics-list-row"></div>
+          </div>
+
+          <!-- 우측: 가방 소지품 (아이템이 많아도 절대 안 밀리는 스크롤 그리드) -->
+          <div class="bag-panel">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h3 style="color:var(--gold-primary);">📦 가방 소지품</h3>
+              <span id="bag-count-label" style="font-size:12px; color:var(--text-muted);">(0개)</span>
+            </div>
+            <div class="bag-items-grid" id="bag-grid"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 아이템 비교 툴팁 플로팅 패널 -->
+    <div id="item-compare-panel"></div>
+
+    <!-- ===== 레벨업 특성 선택 모달 ===== -->
+    <div class="modal-overlay" id="perk-modal">
+      <div class="modal-content" style="text-align:center;">
+        <h2 style="font-size:24px; color:var(--gold-glow); margin-bottom:6px;">🎉 레벨 업! 특성 선택</h2>
+        <p style="color:var(--text-muted); margin-bottom:16px;">새로운 힘을 1가지 선택하십시오.</p>
+        <div class="perk-cards-container" id="perk-cards-box"></div>
+      </div>
+    </div>
+
+    <!-- ===== 상점 모달 (구매 및 판매 탭 지원) ===== -->
+    <div class="modal-overlay" id="shop-modal">
+      <div class="modal-content" style="width:860px; max-width:95vw;">
+        <div class="modal-header">
+          <div class="modal-title">🛒 방랑 상인의 상점 & 전리품 매입</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('shop-modal')">×</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div class="shop-tabs" style="display:flex; gap:8px;">
+            <button id="tab-shop-buy" class="menu-btn active" style="padding:6px 18px; font-size:13px;" onclick="UI.switchShopTab('buy')">🛒 상품 구매</button>
+            <button id="tab-shop-sell" class="menu-btn" style="padding:6px 18px; font-size:13px;" onclick="UI.switchShopTab('sell')">💰 아이템 판매</button>
+          </div>
+          <div style="font-size:15px; font-weight:bold; color:#ffd700;">
+            보유 골드: <span id="shop-gold-display">0</span> G
+          </div>
+        </div>
+        <div id="shop-buy-container">
+          <div class="shop-grid" id="shop-items-grid"></div>
+        </div>
+        <div id="shop-sell-container" style="display:none;">
+          <div id="shop-sell-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap:10px; max-height:360px; overflow-y:auto; padding:4px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 랜덤 이벤트 모달 ===== -->
+    <div class="modal-overlay" id="event-modal">
+      <div class="modal-content" style="width:580px; text-align:center;">
+        <h2 id="event-title" style="color:var(--gold-primary); margin-bottom:12px;">❓ 미지의 사건</h2>
+        <p id="event-desc" style="color:#ddd; line-height:1.6; margin-bottom:20px; font-size:14px;"></p>
+        <div id="event-options-box" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== 영구 성장 업그레이드 특성판 모달 ===== -->
+    <div class="modal-overlay" id="upgrade-modal">
+      <div class="modal-content" style="width:900px; max-width:96vw;">
+        <div class="modal-header">
+          <div class="modal-title">💎 영혼석 제단 (영구 성장 특성판)</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('upgrade-modal')">×</button>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+          <div style="font-size:16px;">
+            보유 영혼석: <span id="upgrade-souls-text" style="color:#00ffff; font-weight:bold; font-size:18px;">0</span> 💎
+          </div>
+          <div style="font-size:12px; color:var(--text-muted);">
+            던전에서 획득한 영혼석으로 무기, 스킬, 궁극기 및 생존 특성을 영구 해금하십시오.
+          </div>
+        </div>
+        <div class="shop-tabs" id="talent-cat-tabs" style="display:flex; gap:8px; margin-bottom:14px;"></div>
+        <div id="talent-tree-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px; max-height:460px; overflow-y:auto; padding:4px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== 모험 도감 모달 (전체 아이템, 무기, 방어구, 유물, 몬스터/보스) ===== -->
+    <div class="modal-overlay" id="codex-modal">
+      <div class="modal-content" style="width:940px; max-width:96vw;">
+        <div class="modal-header">
+          <div class="modal-title">📖 모험가의 수집 도감</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('codex-modal')">×</button>
+        </div>
+        <!-- 도감 전체 수집률 진행도 바 -->
+        <div id="codex-overall-progress" style="margin-bottom:14px; background:rgba(0,0,0,0.5); padding:10px 14px; border-radius:8px; border:1px solid rgba(255,255,255,0.1);"></div>
+        <div class="shop-tabs" id="codex-tabs-bar" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;"></div>
+        <div id="codex-content-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(270px, 1fr)); gap:10px; max-height:440px; overflow-y:auto; padding:4px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== 업적 모달 (단계별 처치/구매/수집 누적 진행률) ===== -->
+    <div class="modal-overlay" id="achievements-modal">
+      <div class="modal-content" style="width:820px; max-width:96vw;">
+        <div class="modal-header">
+          <div class="modal-title">🏆 모험 업적 및 도전과제</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('achievements-modal')">×</button>
+        </div>
+        <div id="achievements-summary-bar" style="margin-bottom:14px; color:var(--text-muted); font-size:13px; display:flex; justify-content:space-between; align-items:center;"></div>
+        <div id="achievements-list-box" style="display:grid; grid-template-columns: 1fr 1fr; gap:10px; max-height:460px; overflow-y:auto; padding:4px;"></div>
+      </div>
+    </div>
+
+    <!-- ===== 게임 설정 모달 (사운드 조절 & 스킬/조작 키 바인딩) ===== -->
+    <div class="modal-overlay" id="settings-modal">
+      <div class="modal-content" style="width:580px; max-width:96vw;">
+        <div class="modal-header">
+          <div class="modal-title">⚙️ 게임 환경 및 조작 키 설정</div>
+          <button class="modal-close-btn" onclick="UI.closeModal('settings-modal')">×</button>
+        </div>
+        <div style="display:flex; flex-direction:column; gap:18px; max-height:500px; overflow-y:auto; padding-right:4px;">
+          <!-- 1. 오디오 설정 -->
+          <div style="background:rgba(0,0,0,0.4); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+            <h4 style="color:var(--gold-primary); margin-bottom:10px; font-size:14px;">🔊 볼륨 & 환경 설정</h4>
+            <div style="display:flex; flex-direction:column; gap:10px;">
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                  <span>마스터 음량</span>
+                  <span id="label-master-vol">70%</span>
+                </div>
+                <input type="range" min="0" max="100" value="70" id="slider-master-vol" oninput="UI.onVolumeChange('master', this.value)" style="width:100%;">
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                  <span>배경음악 (BGM)</span>
+                  <span id="label-bgm-vol">50%</span>
+                </div>
+                <input type="range" min="0" max="100" value="50" id="slider-bgm-vol" oninput="UI.onVolumeChange('bgm', this.value)" style="width:100%;">
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px;">
+                  <span>효과음 (SFX)</span>
+                  <span id="label-sfx-vol">80%</span>
+                </div>
+                <input type="range" min="0" max="100" value="80" id="slider-sfx-vol" oninput="UI.onVolumeChange('sfx', this.value)" style="width:100%;">
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+                <span style="font-size:13px;">데미지 숫자 플로팅 표시</span>
+                <input type="checkbox" id="chk-dmg-text" checked onchange="Save.data.settings.showDmgText = this.checked; Save.save();">
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13px;">피격 및 타격 화면 흔들림 효과</span>
+                <input type="checkbox" id="chk-screen-shake" checked onchange="Save.data.settings.screenShake = this.checked; Save.save();">
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. 스킬 및 조작 키 커스텀 바인딩 -->
+          <div style="background:rgba(0,0,0,0.4); padding:12px; border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <h4 style="color:var(--gold-primary); font-size:14px;">⌨️ 스킬 및 조작 키 설정</h4>
+              <button class="btn-buy" style="background:#444; color:#ddd; font-size:11px; padding:4px 10px;" onclick="Save.resetKeybinds()">기본값 복원</button>
+            </div>
+            <div style="font-size:11px; color:#aaa; margin-bottom:10px;">원하는 조작 키 버튼을 클릭한 뒤 키보드를 누르면 즉시 변경됩니다.</div>
+            <div id="keybind-settings-list" style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 게임 오버 모달 ===== -->
+    <div class="modal-overlay" id="game-over-modal">
+      <div class="modal-content" style="width:450px; text-align:center;">
+        <h1 style="color:#e74c3c; font-size:32px; margin-bottom:10px;">💀 사망했습니다</h1>
+        <p style="color:#aaa; margin-bottom:16px;">던전의 어둠이 당신을 집어삼켰습니다.</p>
+        <div id="death-summary-text" style="background:rgba(0,0,0,0.5); padding:14px; border-radius:8px; margin-bottom:20px; line-height:1.7;"></div>
+        <button class="menu-btn" style="width:100%;" onclick="location.reload();">메인 메뉴로 복귀</button>
+      </div>
+    </div>
+
+    <!-- ===== 게임 승리 모달 ===== -->
+    <div class="modal-overlay" id="victory-modal">
+      <div class="modal-content" style="width:480px; text-align:center;">
+        <h1 style="color:var(--gold-glow); font-size:32px; margin-bottom:10px;">👑 던전 완전 제패!</h1>
+        <p style="color:#2ecc71; font-weight:bold; margin-bottom:16px;">마왕을 토벌하고 던전의 주인이 되었습니다!</p>
+        <div id="victory-summary-text" style="background:rgba(0,0,0,0.5); padding:14px; border-radius:8px; margin-bottom:20px; line-height:1.7;"></div>
+        <button class="menu-btn" style="width:100%;" onclick="location.reload();">영광과 함께 복귀</button>
+      </div>
+    </div>
+
+    <!-- ===== 메인 메뉴 오버레이 ===== -->
+    <div id="main-menu-overlay">
+      <div class="game-logo">DUNGEON OF ROGUE</div>
+      <div class="game-sublogo">2D 도트 액션 로그라이크 RPG</div>
+
+      <div style="margin-bottom:16px; text-align:center;">
+        <h3 style="color:var(--gold-primary); margin-bottom:8px;">클래스 선택</h3>
+        <div class="class-select-grid" id="class-select-grid"></div>
+      </div>
+
+      <!-- 난이도 설정 (쉬움, 보통, 어려움) -->
+      <div style="margin-bottom:20px; text-align:center;">
+        <h3 style="color:var(--gold-primary); margin-bottom:8px;">⚔️ 난이도 설정</h3>
+        <div class="difficulty-select-grid" id="difficulty-select-grid">
+          <div class="diff-card selected" id="diff-card-easy" onclick="Game.setDifficulty('easy')">
+            <div style="font-size:24px;">🌱</div>
+            <div style="font-weight:bold; color:#2ecc71; margin:2px 0; font-size:14px;">쉬움</div>
+            <div style="font-size:11px; color:#aaa; line-height:1.3;">표준 던전 밸런스<br>기본 몬스터</div>
+          </div>
+          <div class="diff-card" id="diff-card-normal" onclick="Game.setDifficulty('normal')">
+            <div style="font-size:24px;">⚔️</div>
+            <div style="font-weight:bold; color:#f1c40f; margin:2px 0; font-size:14px;">보통</div>
+            <div style="font-size:11px; color:#aaa; line-height:1.3;">체력 2.5배 / 공격력 1.8배<br>정예 25% 출현 · 속도 15%↑</div>
+          </div>
+          <div class="diff-card" id="diff-card-hard" onclick="Game.setDifficulty('hard')">
+            <div style="font-size:24px;">💀🔥</div>
+            <div style="font-weight:bold; color:#e74c3c; margin:2px 0; font-size:14px;">악몽 지옥 (극악)</div>
+            <div style="font-size:11px; color:#ff7675; line-height:1.3;">체력 35배 / 공격력 16배<br>5갈래 산탄 탄막 · 정예 85% 군단<br><b style="color:#ff3838;">※ 2~3방 피격 시 즉사 위험!</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="menu-btn-list">
+        <button id="btn-start-game" class="menu-btn" onclick="Game.startGame(Game.selectedClass || 'warrior')">던전 입장</button>
+        <button id="btn-menu-skills" class="menu-btn" onclick="UI.toggleModal('skills-modal')">⚔️ 스킬 도감 & 설정</button>
+        <button id="btn-menu-upgrades" class="menu-btn" onclick="UI.toggleModal('upgrade-modal')">💎 영구 성장 제단</button>
+        <button id="btn-menu-codex" class="menu-btn" onclick="UI.toggleModal('codex-modal')">📖 모험 도감</button>
+        <button id="btn-menu-achievements" class="menu-btn" onclick="UI.toggleModal('achievements-modal')">🏆 업적</button>
+        <button id="btn-menu-settings" class="menu-btn" onclick="UI.toggleModal('settings-modal')">⚙️ 설정</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/audio.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/save.js"></script>
+  <script src="js/assetLoader.js"></script>
+  <script src="js/pixelRenderer.js"></script>
+  <script src="js/combat.js"></script>
+  <script src="js/player.js"></script>
+  <script src="js/enemy.js"></script>
+  <script src="js/dungeon.js"></script>
+  <script src="js/ui.js"></script>
+  <script src="js/game.js"></script>
+
+  <!-- 초기화 및 에러 핸들러 -->
+  <script>
+    window.onerror = function(message, source, lineno, colno, error) {
+      console.error('게임 런타임 오류 포착:', message, source, lineno, colno, error);
+    };
+    window.addEventListener('unhandledrejection', function(event) {
+      console.error('비동기 오류 포착:', event.reason);
+    });
+
+    function initApp() {
+      // 1. 코어 모듈 상태 점검 및 초기화
+      try {
+        if (typeof Game !== 'undefined') Game.init();
+      } catch (e) {
+        console.error('Game.init error:', e);
+      }
+      try {
+        if (typeof UI !== 'undefined') UI.init();
+      } catch (e) {
+        console.error('UI.init error:', e);
+      }
+
+      // 2. 메인 메뉴 버튼 명시적 바인딩
+      const btnStart = document.getElementById('btn-start-game');
+      if (btnStart) {
+        btnStart.onclick = () => {
+          if (window.Sound) Sound.playClick();
+          const chosen = (window.Game && Game.selectedClass) ? Game.selectedClass : 'warrior';
+          if (window.Game) Game.startGame(chosen);
+        };
+      }
+      const btnSkills = document.getElementById('btn-menu-skills');
+      if (btnSkills) {
+        btnSkills.onclick = () => {
+          if (window.UI) UI.toggleModal('skills-modal');
+        };
+      }
+      const btnUpgrades = document.getElementById('btn-menu-upgrades');
+      if (btnUpgrades) {
+        btnUpgrades.onclick = () => {
+          if (window.UI) UI.toggleModal('upgrade-modal');
+        };
+      }
+      const btnCodex = document.getElementById('btn-menu-codex');
+      if (btnCodex) {
+        btnCodex.onclick = () => {
+          if (window.UI) UI.toggleModal('codex-modal');
+        };
+      }
+      const btnAchievements = document.getElementById('btn-menu-achievements');
+      if (btnAchievements) {
+        btnAchievements.onclick = () => {
+          if (window.UI) UI.toggleModal('achievements-modal');
+        };
+      }
+      const btnSettings = document.getElementById('btn-menu-settings');
+      if (btnSettings) {
+        btnSettings.onclick = () => {
+          if (window.UI) UI.toggleModal('settings-modal');
+        };
+      }
+
+      // 3. 모달 바깥 어두운 배경 클릭 시 모달 닫기
+      document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        overlay.addEventListener('click', (e) => {
+          if (e.target === overlay) {
+            overlay.style.display = 'none';
+          }
+        });
+      });
+
+      // 4. 메인 메뉴 클래스 선택 카드 렌더링
+      try {
+        const classGrid = document.getElementById('class-select-grid');
+        if (classGrid && typeof PLAYER_CLASSES !== 'undefined') {
+          classGrid.innerHTML = '';
+          Object.entries(PLAYER_CLASSES).forEach(([id, cDef], idx) => {
+            const card = document.createElement('div');
+            card.className = `class-card ${idx === 0 ? 'selected' : ''}`;
+            card.innerHTML = `
+              <div style="font-size:32px; margin-bottom:4px;">${cDef.icon}</div>
+              <div style="font-size:16px; font-weight:bold; color:var(--gold-primary);">${cDef.name}</div>
+              <div style="font-size:11px; color:#aaa; margin-top:4px;">${cDef.desc}</div>
+            `;
+
+            card.onclick = () => {
+              document.querySelectorAll('.class-card').forEach(el => el.classList.remove('selected'));
+              card.classList.add('selected');
+              if (window.Game) Game.selectedClass = id;
+              if (window.Sound) Sound.playClick();
+            };
+
+            classGrid.appendChild(card);
+          });
+        }
+      } catch (e) {
+        console.error('Class cards render error:', e);
+      }
+
+      // 5. 사이트 진입 시 메인 메뉴 대기 (사용자가 직업/난이도 선택 후 '던전 입장' 버튼 클릭 시 게임 시작)
+      console.log('Main menu ready. Waiting for user to click Dungeon Entrance.');
+    }
+
+    if (document.readyState === 'loading') {
+      window.addEventListener('DOMContentLoaded', initApp);
+    } else {
+      initApp();
+    }
+  </script>
+</body>
+</html>
